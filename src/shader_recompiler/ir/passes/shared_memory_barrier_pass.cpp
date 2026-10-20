@@ -72,12 +72,27 @@ static void EmitBarrierAtBlockStart(IR::Block* block) {
 
 static bool IsDivergent(const IR::U1& cond, const RuntimeInfo& runtime_info) {
     return IR::BreadthFirstSearch(cond, [&runtime_info](IR::Inst* inst) -> std::optional<bool> {
-               if (inst->GetOpcode() == IR::Opcode::GetAttributeU32 &&
-                   inst->Arg(0).Attribute() == IR::Attribute::LocalInvocationId) {
-                   const u32 component = inst->Arg(1).U32();
-                   if (runtime_info.hw.cs.workgroup_size[component] > 1) {
+               switch (inst->GetOpcode()) {
+               case IR::Opcode::GetAttributeU32:
+                   switch (inst->Arg(0).Attribute()) {
+                   case IR::Attribute::LocalInvocationId:
+                       if (runtime_info.hw.cs.workgroup_size[inst->Arg(1).U32()] > 1) {
+                           return true;
+                       }
+                       break;
+                   case IR::Attribute::LocalInvocationIndex:
                        return true;
+                   default:
+                       break;
                    }
+                   break;
+               // V_MBCNT is commonly used to derive the lane index, e.g. as the start of a
+               // per-thread strided loop, so treat it as divergent like the lane id itself.
+               case IR::Opcode::LaneId:
+               case IR::Opcode::MaskedBitCount32:
+                   return true;
+               default:
+                   break;
                }
                return std::nullopt;
            }) == true;
