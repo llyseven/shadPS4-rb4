@@ -137,7 +137,12 @@ inline OverrideItem make_override(const char* key, Setting<T> Struct::* member) 
                 T newValue = entry.get<T>();
                 if (dst.value != newValue) {
                     std::ostringstream oss;
-                    oss << key << " ( " << dst.value << " -> " << newValue << " )";
+                    if constexpr (requires(std::ostream& os) { os << newValue; }) {
+                        oss << key << " ( " << dst.value << " -> " << newValue << " )";
+                    } else {
+                        oss << key << " ( " << nlohmann::json(dst.value).dump() << " -> "
+                            << entry.dump() << " )";
+                    }
                     changed.push_back(oss.str());
                 }
                 dst.game_specific_value = newValue;
@@ -173,6 +178,20 @@ struct GameInstallDir {
     bool enabled;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GameInstallDir, path, enabled)
+
+struct PlayerInput {
+    // SDL gamepad path of the controller assigned to this player, empty for automatic.
+    std::string controller;
+    // OrbisPadDeviceClass reported to the game.
+    int instrument{0};
+    // "midi:<port name>" or "hid:<path>" of a USB instrument or dongle. Otherwise the instrument
+    // is the controller, with the Guitar Hero layout for drums when "gh".
+    std::string instrument_device;
+
+    bool operator==(const PlayerInput&) const = default;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(PlayerInput, controller, instrument,
+                                                instrument_device)
 
 // -------------------------------
 // General settings
@@ -340,6 +359,13 @@ struct InputSettings {
     Setting<s32> camera_id{-1};
     Setting<bool> use_mice_as_mice{false};
     Setting<bool> use_keyboard_as_keyboard{false};
+    Setting<std::vector<PlayerInput>> players{std::vector<PlayerInput>(4)};
+    // Microphone devices, given in player order to the logged in players, those without an
+    // instrument first. Empty for none.
+    Setting<std::vector<std::string>> mics{std::vector<std::string>{"Default Device", "", ""}};
+    Setting<int> midi_drums_pulse_ms{30};
+    Setting<int> midi_drums_min_velocity{10};
+    Setting<std::string> midi_drums_note_overrides{""};
 
     std::vector<OverrideItem> GetOverrideableFields() const {
         return std::vector<OverrideItem>{
@@ -359,7 +385,15 @@ struct InputSettings {
             make_override<InputSettings>("camera_id", &InputSettings::camera_id),
             make_override<InputSettings>("use_mice_as_mice", &InputSettings::use_mice_as_mice),
             make_override<InputSettings>("use_keyboard_as_keyboard",
-                                         &InputSettings::use_keyboard_as_keyboard)};
+                                         &InputSettings::use_keyboard_as_keyboard),
+            make_override<InputSettings>("players", &InputSettings::players),
+            make_override<InputSettings>("mics", &InputSettings::mics),
+            make_override<InputSettings>("midi_drums_pulse_ms",
+                                         &InputSettings::midi_drums_pulse_ms),
+            make_override<InputSettings>("midi_drums_min_velocity",
+                                         &InputSettings::midi_drums_min_velocity),
+            make_override<InputSettings>("midi_drums_note_overrides",
+                                         &InputSettings::midi_drums_note_overrides)};
     }
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(InputSettings, cursor_state, cursor_hide_timeout,
@@ -367,7 +401,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(InputSettings, cursor_state, cursor_hide_time
                                    motion_controls_enabled, use_unified_input_config,
                                    default_controller_id, background_controller_input,
                                    ime_accessibility_enabled, ime_url_mail_short_panel, camera_id,
-                                   is_circle_enter, use_mice_as_mice, use_keyboard_as_keyboard)
+                                   is_circle_enter, use_mice_as_mice, use_keyboard_as_keyboard,
+                                   players, mics, midi_drums_pulse_ms, midi_drums_min_velocity,
+                                   midi_drums_note_overrides)
 // -------------------------------
 // Audio settings
 // -------------------------------
@@ -793,6 +829,11 @@ public:
     SETTING_FORWARD_BOOL(m_input, CircleEnter, is_circle_enter)
     SETTING_FORWARD_BOOL(m_input, MiceUsedAsMice, use_mice_as_mice)
     SETTING_FORWARD_BOOL(m_input, KeyboardUsedAsKeyboard, use_keyboard_as_keyboard)
+    SETTING_FORWARD(m_input, Players, players)
+    SETTING_FORWARD(m_input, Mics, mics)
+    SETTING_FORWARD(m_input, MidiDrumsPulseMs, midi_drums_pulse_ms)
+    SETTING_FORWARD(m_input, MidiDrumsMinVelocity, midi_drums_min_velocity)
+    SETTING_FORWARD(m_input, MidiDrumsNoteOverrides, midi_drums_note_overrides)
 
     // Vulkan settings
     SETTING_FORWARD(m_vulkan, GpuId, gpu_id)

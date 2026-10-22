@@ -1,14 +1,41 @@
 // SPDX-FileCopyrightText: Copyright 2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <charconv>
 #include <cstring>
+#include <optional>
 #include <SDL3/SDL.h>
 #include <common/logging/log.h>
+#include <common/string_util.h>
 #include <core/emulator_settings.h>
 #include "audioin.h"
 #include "audioin_backend.h"
 
 namespace Libraries::AudioIn {
+
+// Prefers the device with exactly this name, then one that only differs by the number Windows
+// gives it when it is plugged in again.
+static std::optional<SDL_AudioDeviceID> FindRecordingDevice(const std::string& name) {
+    int count = 0;
+    SDL_AudioDeviceID* devices = SDL_GetAudioRecordingDevices(&count);
+    const std::string unnumbered_name = Common::RemoveDeviceInstanceNumbers(name);
+    std::optional<SDL_AudioDeviceID> found;
+    for (int i = 0; devices && i < count; i++) {
+        const char* device_name = SDL_GetAudioDeviceName(devices[i]);
+        if (!device_name) {
+            continue;
+        }
+        if (name == device_name) {
+            found = devices[i];
+            break;
+        }
+        if (!found && Common::RemoveDeviceInstanceNumbers(device_name) == unnumbered_name) {
+            found = devices[i];
+        }
+    }
+    SDL_free(devices);
+    return found;
+}
 
 class SDLInPortBackend : public PortInBackend {
 public:
@@ -21,7 +48,8 @@ public:
         fmt.channels = static_cast<Uint8>(port.channels_num);
         fmt.freq = static_cast<int>(port.freq);
 
-        std::string micDevStr = EmulatorSettings.GetSDLMicDevice();
+        std::string micDevStr =
+            port.device.empty() ? EmulatorSettings.GetSDLMicDevice() : port.device;
         uint32_t devId = 0;
         if (micDevStr == "None") {
             nullDevice = true;
@@ -29,13 +57,19 @@ public:
         } else if (micDevStr == "Default Device") {
             devId = SDL_AUDIO_DEVICE_DEFAULT_RECORDING;
             LOG_INFO(Lib_AudioIn, "Using default audio input device");
+        } else if (const auto named = FindRecordingDevice(micDevStr)) {
+            devId = *named;
+            LOG_INFO(Lib_AudioIn, "Using audio input device: {}", micDevStr);
         } else {
-            try {
-                devId = static_cast<uint32_t>(std::stoul(micDevStr));
+            // Parsed without exceptions, as this runs on game threads which they can't unwind.
+            const char* end = micDevStr.data() + micDevStr.size();
+            const auto result = std::from_chars(micDevStr.data(), end, devId);
+            if (result.ec == std::errc{} && result.ptr == end) {
                 LOG_INFO(Lib_AudioIn, "Using audio input device ID: {}", devId);
-            } catch (const std::exception& e) {
+            } else {
                 nullDevice = true;
-                LOG_WARNING(Lib_AudioIn, "Invalid device ID '{}', disabling input", micDevStr);
+                LOG_WARNING(Lib_AudioIn, "Audio input device '{}' not found, disabling input",
+                            micDevStr);
             }
         }
 

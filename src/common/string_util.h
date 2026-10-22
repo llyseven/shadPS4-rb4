@@ -18,6 +18,10 @@ std::vector<std::string> SplitString(const std::string& str, char delimiter);
 
 std::string_view U8stringToString(std::u8string_view u8str);
 
+/// Removes the numbers Windows gives devices connected more than once, as in "2- TD-1" and
+/// "IN 1 (2- BEHRINGER UMC 204HD 192k)", which change when a device is plugged in again.
+[[nodiscard]] std::string RemoveDeviceInstanceNumbers(std::string_view name);
+
 #ifdef _WIN32
 [[nodiscard]] std::string UTF16ToUTF8(std::wstring_view input);
 [[nodiscard]] std::wstring UTF8ToUTF16W(std::string_view str);

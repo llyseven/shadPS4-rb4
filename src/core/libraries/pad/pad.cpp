@@ -10,6 +10,7 @@
 #include "core/user_settings.h"
 #include "imgui/renderer/imgui_core.h"
 #include "input/controller.h"
+#include "input/instruments.h"
 #include "pad.h"
 
 #include <algorithm>
@@ -43,8 +44,24 @@ static u64 pad_handle_counter = 1;
 static std::unordered_map<HandleKey, s32, HandleKeyHash> pad_handle_map{};
 static std::unordered_map<s32, GameController*> handle_to_controller_map{};
 
+// The player, from 1 to 4, whose controller backs a pad handle.
+static std::optional<s32> GetPlayer(const GameController* controller) {
+    const auto& controllers = *Common::Singleton<GameControllers>::Instance();
+    for (s32 i = 0; i < 4; i++) {
+        if (controllers[i] == controller) {
+            return i + 1;
+        }
+    }
+    return std::nullopt;
+}
+
+static OrbisPadDeviceClass GetDeviceClass(const GameController* controller) {
+    const auto player = GetPlayer(controller);
+    return player ? Input::Instruments::GetDeviceClass(*player) : OrbisPadDeviceClass::Standard;
+}
+
 int PS4_SYSV_ABI scePadClose(s32 handle) {
-    LOG_WARNING(Lib_Pad, "called, handle: {}", handle);
+    LOG_DEBUG(Lib_Pad, "called, handle: {}", handle);
     if (handle_to_controller_map.erase(handle) == 0) {
         return ORBIS_PAD_ERROR_INVALID_HANDLE;
     }
@@ -68,10 +85,12 @@ int PS4_SYSV_ABI scePadDeviceClassGetExtendedInformation(
     if (it == handle_to_controller_map.end()) {
         return ORBIS_PAD_ERROR_INVALID_HANDLE;
     }
-    LOG_ERROR(Lib_Pad, "(STUBBED) called");
+    LOG_DEBUG(Lib_Pad, "called, handle: {}", handle);
     std::memset(pExtInfo, 0, sizeof(OrbisPadDeviceClassExtendedInformation));
-    if (EmulatorSettings.IsUsingSpecialPad()) {
-        pExtInfo->deviceClass = (OrbisPadDeviceClass)EmulatorSettings.GetSpecialPadClass();
+    pExtInfo->deviceClass = GetDeviceClass(it->second);
+    if (pExtInfo->deviceClass == OrbisPadDeviceClass::Drum) {
+        // Velocity sensitive pads and cymbals.
+        pExtInfo->classData.drum.capability = 0x03;
     }
     return ORBIS_OK;
 }
@@ -147,13 +166,14 @@ int PS4_SYSV_ABI scePadGetControllerInformation(s32 handle, OrbisPadControllerIn
     pInfo->stickInfo.deadZoneLeft = 1;
     pInfo->stickInfo.deadZoneRight = 1;
     pInfo->connectionType = ORBIS_PAD_CONNECTION_TYPE_LOCAL;
-    pInfo->connectedCount = state.connected_count;
+    const auto player = GetPlayer(it->second);
+    const bool has_instrument = player && Input::Instruments::HasInstrumentDevice(*player);
+    pInfo->connectedCount =
+        has_instrument ? std::max<u8>(state.connected_count, 1) : state.connected_count;
     pInfo->deviceClass = OrbisPadDeviceClass::Standard;
-    pInfo->connected = state.connected;
-    if (state.connected) {
-        pInfo->deviceClass = EmulatorSettings.IsUsingSpecialPad()
-                                 ? (OrbisPadDeviceClass)EmulatorSettings.GetSpecialPadClass()
-                                 : OrbisPadDeviceClass::Standard;
+    pInfo->connected = state.connected || has_instrument;
+    if (pInfo->connected) {
+        pInfo->deviceClass = GetDeviceClass(it->second);
     }
     LOG_DEBUG(Lib_Pad, "c: {} cc: {}, ct: {}, dc: {}", pInfo->connected, pInfo->connectedCount,
               pInfo->connectionType, std::to_underlying(pInfo->deviceClass));
@@ -337,13 +357,15 @@ int PS4_SYSV_ABI scePadOpen(Libraries::UserService::OrbisUserServiceUserId userI
     s32 new_handle = pad_handle_counter++;
     pad_handle_map[{userId, type, index}] = new_handle;
 
+    const bool special =
+        Input::Instruments::GetDeviceClass(u->player_index) != OrbisPadDeviceClass::Standard;
     handle_to_controller_map[new_handle] =
-        controllers[type == (EmulatorSettings.IsUsingSpecialPad() ? 2 : 0)
-                        ? UserManagement.GetUserByID(userId)->player_index - 1
+        controllers[type == (special ? ORBIS_PAD_PORT_TYPE_SPECIAL : ORBIS_PAD_PORT_TYPE_STANDARD)
+                        ? u->player_index - 1
                         : 4];
-    LOG_INFO(Lib_Pad,
-             "called user_id = {}, type = {}, index = {}, player index = {}, out handle = {}",
-             userId, type, index, u->player_index, new_handle);
+    LOG_DEBUG(Lib_Pad,
+              "called user_id = {}, type = {}, index = {}, player index = {}, out handle = {}",
+              userId, type, index, u->player_index, new_handle);
     scePadResetLightBar(new_handle);
     scePadResetOrientation(new_handle);
     return new_handle;
@@ -441,7 +463,13 @@ int PS4_SYSV_ABI scePadRead(s32 handle, OrbisPadData* pData, s32 num) {
     auto& controller = *it->second;
     std::array<Input::State, ORBIS_PAD_MAX_DATA_NUM> states;
     const int ret_num = controller.ReadStates(states.data(), num);
-    return ProcessStates(pData, states.data(), ret_num);
+    const int result = ProcessStates(pData, states.data(), ret_num);
+    if (const auto player = GetPlayer(&controller)) {
+        for (int i = 0; i < result; i++) {
+            Input::Instruments::Apply(*player, pData[i]);
+        }
+    }
+    return result;
 }
 
 int PS4_SYSV_ABI scePadReadBlasterForTracker() {
@@ -508,7 +536,7 @@ int PS4_SYSV_ABI scePadResetLightBarAllByPortType() {
 }
 
 int PS4_SYSV_ABI scePadResetOrientation(s32 handle) {
-    LOG_INFO(Lib_Pad, "scePadResetOrientation called handle = {}", handle);
+    LOG_DEBUG(Lib_Pad, "scePadResetOrientation called handle = {}", handle);
 
     auto it = handle_to_controller_map.find(handle);
     if (it == handle_to_controller_map.end()) {

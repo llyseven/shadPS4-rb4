@@ -9,6 +9,8 @@
 #include "core/libraries/audio/audioin.h"
 #include "core/libraries/error_codes.h"
 #include "core/libraries/libs.h"
+#include "core/user_settings.h"
+#include "input/instruments.h"
 
 namespace Libraries::AudioIn {
 
@@ -86,6 +88,13 @@ int PS4_SYSV_ABI sceAudioInOpen(Libraries::UserService::OrbisUserServiceUserId u
         return ORBIS_AUDIO_IN_ERROR_INVALID_FREQ;
     }
 
+    // Games such as Rock Band 4 open a microphone for every user and stop using microphones when
+    // any of them fails, so every user gets one, silent when none is left.
+    std::string device;
+    if (const auto user = UserManagement.GetUserByID(userId)) {
+        device = Input::Instruments::GetMicrophone(user->player_index);
+    }
+
     std::unique_lock lock{port_allocation_mutex};
 
     // Allocate port
@@ -104,6 +113,7 @@ int PS4_SYSV_ABI sceAudioInOpen(Libraries::UserService::OrbisUserServiceUserId u
         port->format = format;
         port->samples_num = len;
         port->freq = freq;
+        port->device = std::move(device);
 
         // Determine channel count and sample size based on format
         switch (format) {

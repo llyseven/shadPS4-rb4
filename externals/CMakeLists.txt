@@ -430,3 +430,9 @@ if (NOT TARGET ZArchive::zarchive)
     target_compile_features(zarchive PRIVATE cxx_std_20)
     add_library(ZArchive::zarchive ALIAS zarchive)
 endif()
+
+# RtMidi
+if (NOT TARGET rtmidi)
+    set(RTMIDI_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    add_subdirectory(rtmidi EXCLUDE_FROM_ALL)
+endif()

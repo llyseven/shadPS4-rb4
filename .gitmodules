@@ -166,3 +166,6 @@
 	path = externals/imgui
 	url = https://github.com/shadexternals/imgui.git
 	branch = docking
+[submodule "externals/rtmidi"]
+	path = externals/rtmidi
+	url = https://github.com/thestk/rtmidi.git

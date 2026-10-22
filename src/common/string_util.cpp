@@ -41,6 +41,25 @@ std::string_view U8stringToString(std::u8string_view u8str) {
     return std::string_view{reinterpret_cast<const char*>(u8str.data()), u8str.size()};
 }
 
+std::string RemoveDeviceInstanceNumbers(std::string_view name) {
+    std::string result;
+    result.reserve(name.size());
+    for (size_t i = 0; i < name.size(); ++i) {
+        if (i == 0 || name[i - 1] == '(') {
+            size_t end = i;
+            while (end < name.size() && name[end] >= '0' && name[end] <= '9') {
+                ++end;
+            }
+            if (end > i && name.substr(end, 2) == "- ") {
+                i = end + 1;
+                continue;
+            }
+        }
+        result += name[i];
+    }
+    return result;
+}
+
 #ifdef _WIN32
 static std::wstring CPToUTF16(u32 code_page, std::string_view input) {
     const auto size =

@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <mutex>
+#include <string>
 #include <core/libraries/system/userservice.h>
 #include "common/types.h"
 
@@ -37,6 +38,8 @@ struct PortIn {
     u32 freq = 0;
     u32 channels_num = 0;
     u32 sample_size = 0;
+    // Microphone device name, empty for the globally configured one.
+    std::string device;
 };
 
 int PS4_SYSV_ABI sceAudioInChangeAppModuleState();

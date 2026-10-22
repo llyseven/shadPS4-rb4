@@ -16,6 +16,7 @@
 #include "core/libraries/system/userservice.h"
 #include "core/user_settings.h"
 #include "input/controller.h"
+#include "input/instruments.h"
 
 namespace Input {
 
@@ -300,6 +301,13 @@ void GameControllers::TryOpenSDLControllers() {
         }
     }
 
+    // Players can have a specific controller assigned to them, identified by its path. The other
+    // controllers fill the remaining players in connection order.
+    const auto players = EmulatorSettings.GetPlayers();
+    const auto assigned_controller = [&players](int i) {
+        return i < static_cast<int>(players.size()) ? players[i].controller : std::string{};
+    };
+
     for (int j = 0; j < controller_count; j++) {
         SDL_JoystickID id = new_joysticks[j];
         if (assigned_ids.contains(id))
@@ -310,7 +318,18 @@ void GameControllers::TryOpenSDLControllers() {
             continue;
         }
 
+        const char* path = SDL_GetGamepadPath(pad);
+        std::optional<int> assigned_slot;
         for (int i = 0; i < 4; i++) {
+            if (path && assigned_controller(i) == path) {
+                assigned_slot = i;
+            }
+        }
+
+        for (int i = 0; i < 4; i++) {
+            if (assigned_slot ? i != *assigned_slot : !assigned_controller(i).empty()) {
+                continue;
+            }
             if (!slot_taken[i]) {
                 auto u = UserManagement.GetUserByPlayerIndex(i + 1);
                 if (!u) {
@@ -319,8 +338,8 @@ void GameControllers::TryOpenSDLControllers() {
                               // Player N won't be registered at all
                 }
                 auto* c = controllers[i];
-                LOG_INFO(Input, "Gamepad registered for slot {}! Handle: {}", i,
-                         SDL_GetGamepadID(pad));
+                LOG_INFO(Input, "Gamepad registered for slot {}! Handle: {}, path: {}", i,
+                         SDL_GetGamepadID(pad), path ? path : "");
                 slot_taken[i] = true;
                 c->user_id = u->user_id;
                 UserManagement.LoginUser(u, i + 1);
@@ -355,6 +374,38 @@ void GameControllers::TryOpenSDLControllers() {
             controllers[0]->ConnectController(nullptr);
             UserManagement.LoginUser(u, 1);
         }
+    }
+    // An instrument with its own device, such as a MIDI drum kit, lets a player join without a
+    // controller.
+    for (int i = 0; i < 4; i++) {
+        if (slot_taken[i] || !Instruments::HasInstrumentDevice(i + 1)) {
+            continue;
+        }
+        if (auto u = UserManagement.GetUserByPlayerIndex(i + 1)) {
+            controllers[i]->user_id = u->user_id;
+            UserManagement.LoginUser(u, i + 1);
+        }
+    }
+    // Games such as Rock Band 4 need each microphone on a different user. When there are more
+    // microphones than players, users without a controller hold the rest, from the last slot so
+    // that controllers connected later still fill the first ones.
+    const auto mics = EmulatorSettings.GetMics();
+    auto unheld_mics = std::ranges::count_if(mics, [](const auto& mic) { return !mic.empty(); });
+    for (int i = 0; i < 4; i++) {
+        const auto u = UserManagement.GetUserByPlayerIndex(i + 1);
+        if (u && u->logged_in) {
+            unheld_mics--;
+        }
+    }
+    for (int i = 3; i >= 0 && unheld_mics > 0; i--) {
+        auto u = UserManagement.GetUserByPlayerIndex(i + 1);
+        if (slot_taken[i] || !assigned_controller(i).empty() || !u || u->logged_in) {
+            continue;
+        }
+        LOG_INFO(Input, "Logging in player {} without a controller to hold a microphone", i + 1);
+        controllers[i]->user_id = u->user_id;
+        UserManagement.LoginUser(u, i + 1);
+        unheld_mics--;
     }
     SDL_free(new_joysticks);
 }
