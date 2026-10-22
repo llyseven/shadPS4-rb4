@@ -288,7 +288,12 @@ s32 PS4_SYSV_ABI get_authinfo(s32 pid, AuthInfoData* p2) {
 s32 PS4_SYSV_ABI sceKernelGetAppInfo(s32 pid, OrbisKernelAppInfo* app_info) {
     LOG_WARNING(Lib_Kernel, "(STUBBED) called, pid: {}", pid);
     if (pid != GLOBAL_PID) {
-        return ORBIS_KERNEL_ERROR_EPERM;
+        // The Rock Band 4 Deluxe plugin detects shadPS4 by finding a process with an empty title
+        // id, and only then disables effects that don't render correctly here (scene masks).
+        if (app_info != nullptr) {
+            *app_info = {};
+        }
+        return ORBIS_OK;
     }
     if (app_info == nullptr) {
         return ORBIS_OK;
