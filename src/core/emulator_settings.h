@@ -347,7 +347,7 @@ struct InputSettings {
     Setting<int> cursor_state{HideCursorState::Idle};      // specific
     Setting<int> cursor_hide_timeout{5};                   // specific
     Setting<int> usb_device_backend{UsbBackendType::Real}; // specific
-    Setting<int> usb_device_list_cache_ms{0};
+    Setting<int> usb_device_list_cache_ms{1000};
     Setting<bool> use_special_pad{false};
     Setting<int> special_pad_class{1};
     Setting<bool> motion_controls_enabled{true}; // specific
@@ -471,7 +471,7 @@ struct GPUSettings {
     Setting<bool> userfaultfd{false};
     Setting<bool> inline_fetch_shader{false};
     Setting<bool> fast_shader_math{false};
-    Setting<bool> sleep_in_gpu_waits{false};
+    Setting<bool> sleep_in_gpu_waits{true};
 
     std::vector<OverrideItem> GetOverrideableFields() const {
         return std::vector<OverrideItem>{
