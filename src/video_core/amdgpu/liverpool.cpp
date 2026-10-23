@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <SDL3/SDL_timer.h>
 #include <boost/preprocessor/stringize.hpp>
 
 #include "common/assert.h"
@@ -23,6 +24,9 @@ namespace AmdGpu {
 
 static const char* dcb_task_name{"DCB_TASK"};
 static const char* ccb_task_name{"CCB_TASK"};
+
+static constexpr std::chrono::microseconds GpuWaitSpinTime{100};
+static constexpr std::chrono::nanoseconds GpuWaitSleepTime{200'000};
 
 #define MAX_NAMES 56
 static_assert(Liverpool::NumComputeRings <= MAX_NAMES);
@@ -66,7 +70,9 @@ static std::span<const u32> NextPacket(std::span<const u32> span, size_t offset)
     return span.subspan(offset);
 }
 
-Liverpool::Liverpool() : guest_markers_enabled{EmulatorSettings.IsVkGuestMarkersEnabled()} {
+Liverpool::Liverpool()
+    : guest_markers_enabled{EmulatorSettings.IsVkGuestMarkersEnabled()},
+      sleep_in_gpu_waits{EmulatorSettings.IsSleepInGpuWaits()} {
     num_counter_pairs = Libraries::Kernel::sceKernelIsNeoMode() ? 16 : 8;
     process_thread = std::jthread{std::bind_front(&Liverpool::Process, this)};
 }
@@ -835,7 +841,13 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb) {
                     vo_port->WaitVoLabel([&] { return wait_reg_mem->Test(regs.reg_array); });
                     break;
                 }
+                const auto spin_end = std::chrono::steady_clock::now() + GpuWaitSpinTime;
                 while (!wait_reg_mem->Test(regs.reg_array)) {
+                    if (sleep_in_gpu_waits && !num_commands &&
+                        num_submits == mapped_queues[GfxQueueId].submits.size() &&
+                        std::chrono::steady_clock::now() > spin_end) {
+                        SDL_DelayNS(GpuWaitSleepTime.count());
+                    }
                     YIELD_GFX();
                 }
                 break;
