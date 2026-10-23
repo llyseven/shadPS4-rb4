@@ -3,7 +3,10 @@
 
 #pragma once
 
+#include <chrono>
+#include <cstdlib>
 #include <list>
+#include <mutex>
 
 #include <libusb.h>
 
@@ -124,15 +127,54 @@ protected:
 
 class UsbRealBackend : public UsbBackend {
 public:
+    explicit UsbRealBackend(std::chrono::milliseconds device_list_cache_time = {})
+        : device_list_cache_time{device_list_cache_time} {}
+
     s32 Init() override {
         return libusb_init(&g_libusb_context);
     }
     void Exit() override {
+        {
+            std::scoped_lock lock{device_list_mutex};
+            if (cached_device_list) {
+                libusb_free_device_list(cached_device_list, 1);
+                cached_device_list = nullptr;
+            }
+        }
         libusb_exit(g_libusb_context);
     }
 
     s64 GetDeviceList(libusb_device*** list) override {
-        return libusb_get_device_list(g_libusb_context, list);
+        if (device_list_cache_time.count() <= 0) {
+            return libusb_get_device_list(g_libusb_context, list);
+        }
+
+        std::scoped_lock lock{device_list_mutex};
+        const auto now = std::chrono::steady_clock::now();
+        if (!cached_device_list || now - device_list_time >= device_list_cache_time) {
+            libusb_device** devices;
+            const s64 count = libusb_get_device_list(g_libusb_context, &devices);
+            if (count < 0) {
+                return count;
+            }
+            if (cached_device_list) {
+                libusb_free_device_list(cached_device_list, 1);
+            }
+            cached_device_list = devices;
+            cached_device_count = count;
+            device_list_time = now;
+        }
+
+        auto** devices =
+            static_cast<libusb_device**>(calloc(cached_device_count + 1, sizeof(libusb_device*)));
+        if (!devices) {
+            return LIBUSB_ERROR_NO_MEM;
+        }
+        for (s64 i = 0; i < cached_device_count; ++i) {
+            devices[i] = libusb_ref_device(cached_device_list[i]);
+        }
+        *list = devices;
+        return cached_device_count;
     }
     void FreeDeviceList(libusb_device** list, s32 unref_devices) override {
         libusb_free_device_list(list, unref_devices);
@@ -271,6 +313,13 @@ public:
 protected:
     libusb_context* g_libusb_context = nullptr;
     bool s_has_removed_driver = false;
+
+private:
+    const std::chrono::milliseconds device_list_cache_time;
+    std::mutex device_list_mutex;
+    libusb_device** cached_device_list = nullptr;
+    s64 cached_device_count = 0;
+    std::chrono::steady_clock::time_point device_list_time;
 };
 
 class UsbEmulatedBackend : public UsbRealBackend {

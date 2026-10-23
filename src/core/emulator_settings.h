@@ -347,6 +347,7 @@ struct InputSettings {
     Setting<int> cursor_state{HideCursorState::Idle};      // specific
     Setting<int> cursor_hide_timeout{5};                   // specific
     Setting<int> usb_device_backend{UsbBackendType::Real}; // specific
+    Setting<int> usb_device_list_cache_ms{0};
     Setting<bool> use_special_pad{false};
     Setting<int> special_pad_class{1};
     Setting<bool> motion_controls_enabled{true}; // specific
@@ -373,6 +374,8 @@ struct InputSettings {
             make_override<InputSettings>("cursor_hide_timeout",
                                          &InputSettings::cursor_hide_timeout),
             make_override<InputSettings>("usb_device_backend", &InputSettings::usb_device_backend),
+            make_override<InputSettings>("usb_device_list_cache_ms",
+                                         &InputSettings::usb_device_list_cache_ms),
             make_override<InputSettings>("motion_controls_enabled",
                                          &InputSettings::motion_controls_enabled),
             make_override<InputSettings>("background_controller_input",
@@ -397,12 +400,13 @@ struct InputSettings {
     }
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(InputSettings, cursor_state, cursor_hide_timeout,
-                                   usb_device_backend, use_special_pad, special_pad_class,
-                                   motion_controls_enabled, use_unified_input_config,
-                                   default_controller_id, background_controller_input,
-                                   ime_accessibility_enabled, ime_url_mail_short_panel, camera_id,
-                                   is_circle_enter, use_mice_as_mice, use_keyboard_as_keyboard,
-                                   players, mics, midi_drums_pulse_ms, midi_drums_min_velocity,
+                                   usb_device_backend, usb_device_list_cache_ms, use_special_pad,
+                                   special_pad_class, motion_controls_enabled,
+                                   use_unified_input_config, default_controller_id,
+                                   background_controller_input, ime_accessibility_enabled,
+                                   ime_url_mail_short_panel, camera_id, is_circle_enter,
+                                   use_mice_as_mice, use_keyboard_as_keyboard, players, mics,
+                                   midi_drums_pulse_ms, midi_drums_min_velocity,
                                    midi_drums_note_overrides)
 // -------------------------------
 // Audio settings
@@ -821,6 +825,7 @@ public:
     SETTING_FORWARD(m_input, CursorState, cursor_state)
     SETTING_FORWARD(m_input, CursorHideTimeout, cursor_hide_timeout)
     SETTING_FORWARD(m_input, UsbDeviceBackend, usb_device_backend)
+    SETTING_FORWARD(m_input, UsbDeviceListCacheMs, usb_device_list_cache_ms)
     SETTING_FORWARD_BOOL(m_input, MotionControlsEnabled, motion_controls_enabled)
     SETTING_FORWARD_BOOL(m_input, BackgroundControllerInput, background_controller_input)
     SETTING_FORWARD_BOOL(m_input, ImeAccessibilityEnabled, ime_accessibility_enabled)

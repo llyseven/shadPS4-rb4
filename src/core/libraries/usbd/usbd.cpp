@@ -468,7 +468,8 @@ void RegisterLib(Core::Loader::SymbolsResolver* sym) {
         usb_backend = std::make_shared<DimensionsToypadBackend>();
         break;
     default:
-        usb_backend = std::make_shared<UsbRealBackend>();
+        usb_backend = std::make_shared<UsbRealBackend>(
+            std::chrono::milliseconds{EmulatorSettings.GetUsbDeviceListCacheMs()});
         break;
     }
 
