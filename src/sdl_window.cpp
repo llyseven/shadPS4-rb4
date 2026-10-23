@@ -15,6 +15,7 @@
 #include "common/io_file.h"
 #include "common/logging/formatter.h"
 #include "common/scope_exit.h"
+#include "common/thread.h"
 #include "core/debug_state.h"
 #include "core/devtools/layer.h"
 #include "core/emulator_settings.h"
@@ -42,6 +43,8 @@ CMRC_DECLARE(res);
 namespace Frontend {
 
 using namespace Libraries::Pad;
+
+static constexpr std::chrono::milliseconds ControllerPollInterval{4};
 
 static OrbisPadButtonDataOffset SDLGamepadToOrbisButton(u8 button) {
     using OPBDO = OrbisPadButtonDataOffset;
@@ -80,12 +83,6 @@ static OrbisPadButtonDataOffset SDLGamepadToOrbisButton(u8 button) {
     default:
         return OPBDO::None;
     }
-}
-
-static Uint32 SDLCALL PollController(void* userdata, SDL_TimerID timer_id, Uint32 interval) {
-    auto* controller = reinterpret_cast<Input::GameController*>(userdata);
-    controller->PollState();
-    return interval;
 }
 
 static Uint32 SDLCALL PollControllerLightColour(void* userdata, SDL_TimerID timer_id,
@@ -340,9 +337,22 @@ void WindowSDL::WaitEvent() {
 }
 
 void WindowSDL::InitTimers() {
-    for (int i = 0; i < 4; ++i) {
-        SDL_AddTimer(4, &PollController, controllers[i]);
-    }
+    controller_poll_thread = std::jthread([this](std::stop_token stoken) {
+        Common::SetCurrentThreadName("shadPS4:ControllerPoll");
+        auto next_poll = std::chrono::steady_clock::now();
+        while (!stoken.stop_requested()) {
+            for (int i = 0; i < 4; ++i) {
+                controllers[i]->PollState();
+            }
+            next_poll += ControllerPollInterval;
+            const auto now = std::chrono::steady_clock::now();
+            if (next_poll > now) {
+                SDL_DelayNS(std::chrono::nanoseconds{next_poll - now}.count());
+            } else {
+                next_poll = now;
+            }
+        }
+    });
     SDL_AddTimer(33, Input::MousePolling, (void*)controllers[0]);
 }
 
