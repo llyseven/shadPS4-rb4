@@ -66,7 +66,9 @@ public:
         const int index =
             Button(SDL_GAMEPAD_BUTTON_DPAD_UP) | Button(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) << 1 |
             Button(SDL_GAMEPAD_BUTTON_DPAD_DOWN) << 2 | Button(SDL_GAMEPAD_BUTTON_DPAD_LEFT) << 3;
-        return {.hat = hats[index], .start = Button(SDL_GAMEPAD_BUTTON_START)};
+        return {.hat = hats[index],
+                .start = Button(SDL_GAMEPAD_BUTTON_START),
+                .select = Button(SDL_GAMEPAD_BUTTON_BACK)};
     }
 
 private:

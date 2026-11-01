@@ -48,6 +48,7 @@ struct Navigation {
     // Hat switch direction, 0 for up going clockwise to 7, anything else for centered.
     u8 hat{8};
     bool start{};
+    bool select{};
 };
 
 // The hits of a Rock Band drum kit from an Xbox 360, PS3 or Wii, which report the hit colors with

@@ -181,14 +181,20 @@ static void DecodePs4Guitar(const Report& r, OrbisPadData& data) {
                   .whammy = r[44],
                   .tilt = r[45]},
                  data);
-    EncodeNavigation({.hat = static_cast<u8>(r[5] & 0x0F), .start = Bit(r, 6, 0x20)}, data);
+    EncodeNavigation({.hat = static_cast<u8>(r[5] & 0x0F),
+                      .start = Bit(r, 6, 0x20),
+                      .select = Bit(r, 6, 0x10)},
+                     data);
 }
 
 static void DecodePs4Drums(const Report& r, OrbisPadData& data) {
     DrumState state{.kick1 = Bit(r, 6, 0x01), .kick2 = Bit(r, 6, 0x02)};
     std::copy_n(r.begin() + 43, NumDrumLanes, state.velocities.begin());
     EncodeDrums(state, data);
-    EncodeNavigation({.hat = static_cast<u8>(r[5] & 0x0F), .start = Bit(r, 6, 0x20)}, data);
+    EncodeNavigation({.hat = static_cast<u8>(r[5] & 0x0F),
+                      .start = Bit(r, 6, 0x20),
+                      .select = Bit(r, 6, 0x10)},
+                     data);
 }
 
 static void DecodePs5Guitar(const Report& r, OrbisPadData& data) {
@@ -197,7 +203,10 @@ static void DecodePs5Guitar(const Report& r, OrbisPadData& data) {
                   .whammy = r[41],
                   .tilt = r[42]},
                  data);
-    EncodeNavigation({.hat = static_cast<u8>(r[8] & 0x0F), .start = Bit(r, 9, 0x20)}, data);
+    EncodeNavigation({.hat = static_cast<u8>(r[8] & 0x0F),
+                      .start = Bit(r, 9, 0x20),
+                      .select = Bit(r, 9, 0x10)},
+                     data);
 }
 
 // PS3 and Wii instruments use the PS3 controller report, which has no report ID.
@@ -211,6 +220,7 @@ enum Ps3Buttons : u8 {
     Ps3L2 = 0x40,
 };
 enum Ps3ExtraButtons : u8 {
+    Ps3Select = 0x01,
     Ps3Start = 0x02,
     Ps3L3 = 0x04,
     Ps3R3 = 0x08,
@@ -218,7 +228,7 @@ enum Ps3ExtraButtons : u8 {
 constexpr size_t Ps3Hat = 2;
 
 static Navigation Ps3Navigation(const Report& r) {
-    return {.hat = r[Ps3Hat], .start = Bit(r, 1, Ps3Start)};
+    return {.hat = r[Ps3Hat], .start = Bit(r, 1, Ps3Start), .select = Bit(r, 1, Ps3Select)};
 }
 
 static void DecodePs3RockBandGuitar(Device& device, const Report& r, OrbisPadData& data) {
@@ -293,7 +303,7 @@ static void DecodeSantrollerRockBandGuitar(Device& device, const Report& r, Orbi
                   .whammy = r[4],
                   .tilt = Scale((r[6] - 0x80) * 2)},
                  data);
-    EncodeNavigation({.hat = r[3], .start = Bit(r, 2, 0x08)}, data);
+    EncodeNavigation({.hat = r[3], .start = Bit(r, 2, 0x08), .select = Bit(r, 2, 0x04)}, data);
 }
 
 static void DecodeSantrollerGuitarHeroGuitar(const Report& r, OrbisPadData& data) {
@@ -301,7 +311,7 @@ static void DecodeSantrollerGuitarHeroGuitar(const Report& r, OrbisPadData& data
                   .whammy = r[4],
                   .tilt = Bit(r, 1, 0x20) ? u8{255} : Scale((r[6] - 0x80) * 2)},
                  data);
-    EncodeNavigation({.hat = r[3], .start = Bit(r, 1, 0x80)}, data);
+    EncodeNavigation({.hat = r[3], .start = Bit(r, 1, 0x80), .select = Bit(r, 1, 0x40)}, data);
 }
 
 static void DecodeSantrollerRockBandDrums(const Report& r, OrbisPadData& data) {
@@ -316,7 +326,7 @@ static void DecodeSantrollerRockBandDrums(const Report& r, OrbisPadData& data) {
     EncodeDrums(state, data);
     // Cymbal hits also press the d-pad, which only navigates when nothing is hit.
     if (std::ranges::all_of(state.velocities, [](u8 velocity) { return velocity == 0; })) {
-        EncodeNavigation({.hat = r[3], .start = Bit(r, 2, 0x02)}, data);
+        EncodeNavigation({.hat = r[3], .start = Bit(r, 2, 0x02), .select = Bit(r, 2, 0x01)}, data);
     }
 }
 
@@ -328,7 +338,7 @@ static void DecodeSantrollerGuitarHeroDrums(const Report& r, OrbisPadData& data)
     state.velocities[Blue] = r[7];
     state.velocities[GreenCymbal] = r[8];
     EncodeDrums(state, data);
-    EncodeNavigation({.hat = r[3], .start = Bit(r, 1, 0x80)}, data);
+    EncodeNavigation({.hat = r[3], .start = Bit(r, 1, 0x80), .select = Bit(r, 1, 0x40)}, data);
 }
 
 static void Decode(Device& device, const Report& r, OrbisPadData& data) {

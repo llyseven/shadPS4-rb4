@@ -146,6 +146,9 @@ void EncodeNavigation(const Navigation& navigation, OrbisPadData& data) {
     if (navigation.start) {
         data.buttons |= OrbisPadButtonDataOffset::Options;
     }
+    if (navigation.select) {
+        data.buttons |= OrbisPadButtonDataOffset::Left;
+    }
 }
 
 void ClearInstrumentButtons(OrbisPadData& data) {
